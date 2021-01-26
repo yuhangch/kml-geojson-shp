@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>kml#geojson#shp</title>
+</head>
+
+<div>
+    <input type="file" id="upload">
+    <div>
+        <div>&nbsp;</div>
+        <button id="kml">.kml</button>
+        <button id="geojson">.geojson</button>
+        <button id="shp">.shp(zip)</button>
+    </div>
+</div>
+
+<script src="./libs/shp.js"></script>
+<script src="./libs/togeojson.js"></script>
+<script src="./libs/tokml.js"></script>
+<script src="./libs/shpwrite.js"></script>
+<script src="./libs/FileSaver.min.js"></script>
+
+<body>
+<script>
+    const upload_element = document.getElementById("upload");
+    const kml_element = document.getElementById("kml");
+    const geojson_element = document.getElementById("geojson");
+    const shp_element = document.getElementById("shp");
+    let features_ = ""
+    let filename_ = "data"
+
+    function uuid() {
+        var s = [];
+        var hexDigits = "0123456789abcdef";
+        for (var i = 0; i < 36; i++) {
+            s[i] = hexDigits.substr(Math.floor(Math.random() * 0x10), 1);
+        }
+        s[14] = "4"; // bits 12-15 of the time_hi_and_version field to 0010
+        s[19] = hexDigits.substr((s[19] & 0x3) | 0x8, 1); // bits 6-7 of the clock_seq_hi_and_reserved to 01
+        s[8] = s[13] = s[18] = s[23] = "-";
+
+        return s.join("");
+    }
+
+    const enable_buttons = () => {
+        kml_element.disabled = false
+        geojson_element.disabled = false
+        shp_element.disabled = false
+    }
+
+    const load_data = (file) => {
+        enable_buttons()
+        const dot_index = file.name.lastIndexOf(".")
+        filename_ = file.name.slice(0, dot_index)
+        const suffix = file.name.slice(dot_index + 1, file.name.length)
+
+
+        switch (suffix) {
+            case "kml":
+                kml_element.disabled = true
+                readUploadedFileAsText(file).then((txt) => {
+                    features_ = toGeoJSON.kml((new DOMParser()).parseFromString(txt, 'text/xml'))
+                })
+                break
+            case "json":
+            case "geojson":
+                geojson_element.disabled = true
+                readUploadedFileAsText(file).then((txt) => {
+                    features_ = JSON.parse(txt)
+                })
+                break
+            case "zip":
+                shp_element.disabled = true
+                file.arrayBuffer().then((file_) => {
+                    shp(file_).then((geojson) => {
+                        features_ = geojson
+                    });
+                })
+                break
+            default:
+                alert("不支持该格式")
+        }
+    }
+
+    const readUploadedFileAsText = (inputFile) => {
+        const temporaryFileReader = new FileReader();
+
+        return new Promise((resolve, reject) => {
+            temporaryFileReader.onerror = () => {
+                temporaryFileReader.abort();
+                reject(new DOMException("解析文件错误。"));
+            };
+
+            temporaryFileReader.onload = () => {
+                resolve(temporaryFileReader.result);
+            };
+            temporaryFileReader.readAsText(inputFile);
+        });
+    };
+
+
+    upload_element.onchange = () => {  //onchange在你选择完文件时触发
+        const fileList = upload_element.files;
+        if (fileList.length < 1) return
+        load_data(fileList[0])
+    }
+
+    kml_element.onclick = () => {
+        let kml_doc = tokml(features_, {
+            documentName: 'kml',
+            documentDescription: "NULL"
+        })
+        const kml_file = new File([kml_doc], `${filename_}-${uuid().substring(0, 8)}.kml`, {type: "text/xml;charset=utf-8"});
+        // FileSaver.saveAs() 下载文件
+        saveAs(kml_file);
+    }
+
+    geojson_element.onclick = () => {
+        const geojson_file = new File([JSON.stringify(features_)], `${filename_}-${uuid().substring(0, 8)}.geojson`, {type: "application/json;charset=utf-8"});
+        saveAs(geojson_file);
+    }
+
+    shp_element.onclick = () => {
+        shpwrite.download(features_);
+    }
+
+</script>
+</body>
+
+</html>
